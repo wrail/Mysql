@@ -1,0 +1,172 @@
+
+# 一，系统功能结构分析
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190514200940574.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQyNjA1OTY4,size_16,color_FFFFFF,t_70)
+* 用户管理：可以对用户的基本信息进行维护。
+* 角色管理：可以将不同的用户分为不同的角色。
+* 权限管理：不同等级的角色会有不同的权限范围。
+* 课程目录管理：管理员为不同课程根据课程分类有效的组织课程，并可以对目录进行增删改查操作。（其实就是一个树形结构的课程目录管理）
+* 课程管理：可以对课程进行增删改查操作，并且只有拥有相关权限的人才可以进行管理。
+* 系统公共信息：是用来让管理员发布通知等。
+# 二，数据库的设计
+用户管理——>用户表       管理员——>管理员表
+角色管理——>角色表
+权限管理——>权限表       角色权限——>角色权限表 
+课程目录管理——>课程目录表
+课程管理——>课程表
+课程类型——>课程类型表
+课程评论——>课程评论表
+
+根据上边的设计可以算是一个简单的网上课堂的数据库设计了
+1. 为什么还需要重新维护一个管理员表？
+因为管理员是由后台产生的，可以通过后台给某个用户管理员权限。通过管理员表来对管理员用户进行维护（增删改查）。
+2. 怎么解决课程嵌套问题？
+就是根据课程目录管理中的一个parentId来实现课程树
+3. 为什么不给用户表后直接加上应有的权限，反而多设计了一个角色表？
+如下图
+第一步猜想，直接给每个用户写下他们对应的权限
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190514204457396.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQyNjA1OTY4,size_16,color_FFFFFF,t_70)
+很明显，这样是行不通的，我又想到了Set集合，和Enum枚举
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190514204758791.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQyNjA1OTY4,size_16,color_FFFFFF,t_70)
+当然，使用枚举和集合会比那些一个一个的添加上去好的多，但是又没有想过如果某一类权限表发生了变化，那岂不是相关的用户都要进行修改权限，如果项目数据小还好，如果项目数据大就是一件很大的工程了。（比如我们新开发了一个功能——教师互评（此权限限制只能是教师才可以参与互评）这就得给教师这一类角色加上这个权限）
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190514210321606.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQyNjA1OTY4,size_16,color_FFFFFF,t_70)
+如果我们改为上表对应关系的话，是不是这个问题就迎刃而解了，至于要在角色权限表中加一条数据就ok了。
+> 其实再角色权限表用不用外键都行，因为这些都基本是长时间不会变动的一些属性。
+
+# 数据表的设计
+> 下边将以伪代码来写一写数据表的结构设计
+1. role表
+```
+create table role(
+	     id int(5) unique not null auto)increment,
+	     name varchar(10),
+	     constraint pk_id primary key(id)
+);
+```
+下表都是初始化数据
+| id |name  |
+|--|--|
+| 1 | 普通用户 |
+|2|老师|
+| 3| 管理员 |
+2. authority表
+```
+create table authority (
+		id int(5) unique not null primary key auto_increment,
+		name varchar(20) not null
+
+);
+```
+|id| name |
+|--|--|
+|  1| 课程增加权限（管理） |
+|  2| 课程删除权限（管理） |
+|  ...| ... |
+|  5| 视频上传（管理，老师） |
+|  6| 目录修改（管理，老师） |
+|  ...| ...|
+|  10| 评论（本人，管理） |
+|  11| 删除评论（本人，管理） |
+3. role_authority表
+
+```
+create table role_authority(
+
+		id int(5) not null unique ,
+		rid int (5) not null ,
+		aids set not null,
+		constraint pk_id primary key(id)
+);
+```
+初始化好role和authority的对应
+
+4. user表
+
+```
+create table user(
+		id int(5) ...... pk,
+		name varchar(20) ....,
+		....
+		rid int(5) ,
+		#设置外键约束
+		constraint fk_rid foreign key(id) references role(id);
+
+);
+```
+5. admin表
+
+```
+create table admin(
+		id int(5) ... pk,
+		name....,
+		password ....,
+		userId int(5),
+		#设置外键约束
+		constraint fk_uid foreign key (userId)  references user(id);
+);
+```
+
+6. courseCatalog表
+
+```
+create table courseCatalog(
+		id ... pk,
+		name ...,
+		#用来记录分类关系是分类表的重点
+		parentId int(5),
+		description ....
+);
+
+```
+上边的课程分类表的核心就是parnetId，可以利用parentId来进行课程的树状分类，当parentId为null时，那么它就是这个课程的最终的大分类。如下图
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190514214836970.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQyNjA1OTY4,size_16,color_FFFFFF,t_70)
+
+7. mediaType表
+描述的是那种格式的课程
+```
+create table mediaType(
+		id int(5) .....pk,
+		name ....,
+		maxlength .....,
+		......
+);
+
+```
+
+8. course表
+course的主要信息如下伪代码
+```
+create table course (
+		id ....pk,
+		name ....,
+		......
+		mediaTypeId int(5),
+		date datetime,
+		userId int(5)
+		.....
+);
+```
+9. comment表
+用户评论表
+```
+create table comment(
+		id int(5) ...pk,
+		content varchar(100) ,
+		#记录那个用户的评论
+		userId int(5),
+		editTime datetime,
+		deleteTime datetime,
+		......
+
+);
+
+```
+这样一个简单的网上课堂数据库系统就设计出来了，当然如果我们想要更好的使用的话，可以对数据库建立索引，建立视图，并且也可以对一些相关联的数据设计触发器，这些都很简单，根据需求来定。
+# 数据库优化策略
+1. 可以利用索引来加快查找速度
+2. 可以利用视图来限制访问信息
+3. 可以建立触发器来让数据完整性得到保证
+4. 当然有需要的话也可以设计函数和存储过程来简化我们的业务操作
+
+
+> 这就是对这个案例的简单设计，以后在实战项目中也会进行实战数据库分析！
